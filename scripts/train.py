@@ -14,6 +14,8 @@ from src.model.modeling import FashionCLIPModel
 from src.model.loss import BatchHardTripletLoss
 from src.engine.trainer import FashionTrainer
 
+from src.data.triplet_dataset import TripletFashionDataset
+
 def main(args):
     # Config
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -29,20 +31,48 @@ def main(args):
     if args.verify_mode:
         import pandas as pd
         from PIL import Image
-        os.makedirs("data/dummy_train", exist_ok=True)
-        img_path = "data/dummy_train/train.jpg"
-        Image.new('RGB', (224, 224), color='green').save(img_path)
-        pd.DataFrame({"image_path": ["dummy_train/train.jpg"]*10, "caption": ["A green shirt"]*10}).to_csv("data/train.csv", index=False)
-        args.image_dir = "data"
-        args.train_csv = "data/train.csv"
+        if args.triplets_csv:
+            # Create dummy triplet data
+            os.makedirs("data/dummy_triplets", exist_ok=True)
+            img_a = "data/dummy_triplets/anc.jpg"
+            img_p = "data/dummy_triplets/pos.jpg"
+            img_n = "data/dummy_triplets/neg.jpg"
+            Image.new('RGB', (224, 224), color='red').save(img_a)
+            Image.new('RGB', (224, 224), color='red').save(img_p)
+            Image.new('RGB', (224, 224), color='blue').save(img_n)
+            
+            pd.DataFrame({
+                "anchor_image": ["dummy_triplets/anc.jpg"]*10, "anchor_caption": ["Red shirt"]*10,
+                "positive_image": ["dummy_triplets/pos.jpg"]*10, "positive_caption": ["Redish shirt"]*10,
+                "negative_image": ["dummy_triplets/neg.jpg"]*10, "negative_caption": ["Blue shirt"]*10
+            }).to_csv("data/triplets.csv", index=False)
+            args.image_dir = "data"
+            args.triplets_csv = "data/triplets.csv"
+        else:
+            os.makedirs("data/dummy_train", exist_ok=True)
+            img_path = "data/dummy_train/train.jpg"
+            Image.new('RGB', (224, 224), color='green').save(img_path)
+            pd.DataFrame({"image_path": ["dummy_train/train.jpg"]*10, "caption": ["A green shirt"]*10}).to_csv("data/train.csv", index=False)
+            args.image_dir = "data"
+            args.train_csv = "data/train.csv"
         
-    dataset = FashionCLIPDataset(
-        image_root_dir=args.image_dir,
-        metadata_path=args.train_csv,
-        tokenizer=tokenizer,
-        transform=train_transform,
-        return_pairs=True # Critical for triplet loss
-    )
+    if args.triplets_csv:
+        print(f"Using Explicit Triplet Dataset from {args.triplets_csv}")
+        dataset = TripletFashionDataset(
+            image_root_dir=args.image_dir,
+            metadata_path=args.triplets_csv,
+            tokenizer=tokenizer,
+            transform=train_transform
+        )
+    else:
+        print(f"Using Siamese Dataset from {args.train_csv}")
+        dataset = FashionCLIPDataset(
+            image_root_dir=args.image_dir,
+            metadata_path=args.train_csv,
+            tokenizer=tokenizer,
+            transform=train_transform,
+            return_pairs=True # Critical for triplet loss
+        )
     
     train_loader = DataLoader(
         dataset, 
@@ -87,8 +117,12 @@ def main(args):
     
     if args.verify_mode:
         import shutil
-        shutil.rmtree("data/dummy_train")
-        os.remove("data/train.csv")
+        if args.triplets_csv:
+            shutil.rmtree("data/dummy_triplets")
+            os.remove("data/triplets.csv")
+        else:
+            shutil.rmtree("data/dummy_train")
+            os.remove("data/train.csv")
         try: os.rmdir("data") 
         except: pass
 
@@ -96,6 +130,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_dir", type=str, default="data/images")
     parser.add_argument("--train_csv", type=str, default="data/train.csv")
+    parser.add_argument("--triplets_csv", type=str, default=None, help="Path to explicit triplets CSV (anchor, positive, negative)")
     parser.add_argument("--output_dir", type=str, default="checkpoints")
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=32)

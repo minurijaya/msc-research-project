@@ -32,6 +32,12 @@ dresses/dress_01.jpg,Red summer floral dress with V-neck
 shirts/shirt_05.jpg,Blue denim shirt casual fit
 ```
 
+### Explicit Triplet Training (Optional)
+If you have explicit (Anchor, Positive, Negative) triplets, create a CSV with these columns:
+- `anchor_image`, `anchor_caption`
+- `positive_image`, `positive_caption`
+- `negative_image`, `negative_caption`
+
 ## 3. Running Zero-Shot Baseline
 
 Evaluate the pretrained CLIP model performance without any fine-tuning.
@@ -43,14 +49,10 @@ python scripts/evaluate_zero_shot.py \
     --batch_size 32
 ```
 
-**Output**:
-- Recall@1, Recall@5, Recall@10
-- Mean Reciprocal Rank (MRR)
-- WandB logs (if configured)
-
 ## 4. Training the Model
 
-Fine-tune the model using Triplet Margin Loss with Hard Negative Mining.
+### Standard Siamese Training (Implicit Negatives)
+Fine-tune using Batch Hard Triplet Loss (implicit negatives from batch).
 
 ```bash
 python scripts/train.py \
@@ -58,17 +60,35 @@ python scripts/train.py \
     --train_csv path/to/train.csv \
     --output_dir checkpoints \
     --epochs 10 \
-    --batch_size 32 \
-    --learning_rate 2e-5 \
-    --margin 0.5
+    --batch_size 32
 ```
 
-**Key Arguments**:
-- `--projection_dim`: Dimension of the output embedding (default: 256).
-- `--freeze_clip`: Freeze the base CLIP model and train only the projection head (useful for small datasets).
-- `--dry-run`: Run without logging to WandB.
+### Explicit Triplet Training
+Fine-tune using your specific triplet file.
 
-## 5. Verification
+```bash
+python scripts/train.py \
+    --image_dir path/to/images \
+    --triplets_csv path/to/triplets.csv \
+    --output_dir checkpoints_triplet \
+    --epochs 10
+```
+
+## 5. PDP Recommendation Inference
+
+Run the inference script to get recommendations for a specific product (Image + Title).
+
+```bash
+python scripts/infer_pdp.py \
+    --image_dir path/to/images \
+    --catalog_csv path/to/catalog.csv \
+    --model_path checkpoints/checkpoint-epoch-9 \
+    --query_image path/to/query.jpg \
+    --query_text "Red floral dress" \
+    --top_k 5
+```
+
+## 6. Verification
 
 You can verify the entire pipeline using the built-in verification mode which generates dummy data:
 
@@ -78,6 +98,9 @@ python scripts/verify_data.py
 
 # Verify Training Loop (Dry Run)
 python scripts/train.py --dry-run --verify-mode --epochs 1 --batch_size 2
+
+# Verify PDP Inference
+python scripts/verify_pdp.py
 ```
 
 ## Architecture Overview

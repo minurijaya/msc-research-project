@@ -38,41 +38,71 @@ class FashionTrainer:
         for batch in progress_bar:
             self.optimizer.zero_grad()
             
-            # Prepare batch
-            pixel_values_1 = batch["pixel_values"].to(self.device)
-            input_ids_1 = batch["input_ids"].to(self.device)
-            attention_mask_1 = batch["attention_mask"].to(self.device)
-            
-            pixel_values_2 = batch["pixel_values_2"].to(self.device)
-            input_ids_2 = batch["input_ids_2"].to(self.device)
-            attention_mask_2 = batch["attention_mask_2"].to(self.device)
-            
-            batch_size = pixel_values_1.size(0)
-            
-            # Forward Pass View 1
-            emb1 = self.model(
-                pixel_values=pixel_values_1,
-                input_ids=input_ids_1,
-                attention_mask=attention_mask_1
-            )
-            
-            # Forward Pass View 2
-            emb2 = self.model(
-                pixel_values=pixel_values_2,
-                input_ids=input_ids_2, # Same text usually
-                attention_mask=attention_mask_2
-            )
-            
-            # Combine for Triplet Loss
-            # We treat (view1, view2) of same index as positive pairs
-            # And different indices as negatives
-            embeddings = torch.cat([emb1, emb2], dim=0)
-            labels = torch.cat([
-                torch.arange(batch_size, device=self.device),
-                torch.arange(batch_size, device=self.device)
-            ], dim=0)
-            
-            loss = self.loss_fn(embeddings, labels)
+            # Check if batch contains explicit triplets
+            if "anchor_pixel_values" in batch:
+                # Explicit Triplet Mode
+                anc_img = batch["anchor_pixel_values"].to(self.device)
+                anc_ids = batch["anchor_input_ids"].to(self.device)
+                anc_mask = batch["anchor_attention_mask"].to(self.device)
+                
+                pos_img = batch["positive_pixel_values"].to(self.device)
+                pos_ids = batch["positive_input_ids"].to(self.device)
+                pos_mask = batch["positive_attention_mask"].to(self.device)
+                
+                neg_img = batch["negative_pixel_values"].to(self.device)
+                neg_ids = batch["negative_input_ids"].to(self.device)
+                neg_mask = batch["negative_attention_mask"].to(self.device)
+                
+                # Forward Pass
+                anchor_emb = self.model(pixel_values=anc_img, input_ids=anc_ids, attention_mask=anc_mask)
+                positive_emb = self.model(pixel_values=pos_img, input_ids=pos_ids, attention_mask=pos_mask)
+                negative_emb = self.model(pixel_values=neg_img, input_ids=neg_ids, attention_mask=neg_mask)
+                
+                # Standard Triplet Loss
+                # We can reuse torch.nn.TripletMarginLoss directly or via self.loss_fn provided it supports (A, P, N)
+                # If self.loss_fn is BatchHardTripletLoss, it expects (embeddings, labels).
+                # We should probably instantiate a simple TripletMarginLoss for this mode or adapt.
+                # Let's assume for this step we calculate it manually or use functional
+                
+                loss = torch.nn.functional.triplet_margin_loss(
+                    anchor_emb, positive_emb, negative_emb, 
+                    margin=self.config.get("margin", 0.5)
+                )
+                
+            else:
+                # Batch Hard Mode (Siamese)
+                pixel_values_1 = batch["pixel_values"].to(self.device)
+                input_ids_1 = batch["input_ids"].to(self.device)
+                attention_mask_1 = batch["attention_mask"].to(self.device)
+                
+                pixel_values_2 = batch["pixel_values_2"].to(self.device)
+                input_ids_2 = batch["input_ids_2"].to(self.device)
+                attention_mask_2 = batch["attention_mask_2"].to(self.device)
+                
+                batch_size = pixel_values_1.size(0)
+                
+                # Forward Pass View 1
+                emb1 = self.model(
+                    pixel_values=pixel_values_1,
+                    input_ids=input_ids_1,
+                    attention_mask=attention_mask_1
+                )
+                
+                # Forward Pass View 2
+                emb2 = self.model(
+                    pixel_values=pixel_values_2,
+                    input_ids=input_ids_2, # Same text usually
+                    attention_mask=attention_mask_2
+                )
+                
+                # Combine for Triplet Loss
+                embeddings = torch.cat([emb1, emb2], dim=0)
+                labels = torch.cat([
+                    torch.arange(batch_size, device=self.device),
+                    torch.arange(batch_size, device=self.device)
+                ], dim=0)
+                
+                loss = self.loss_fn(embeddings, labels)
             
             loss.backward()
             self.optimizer.step()
