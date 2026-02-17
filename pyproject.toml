@@ -1,0 +1,32 @@
+[project]
+name = "fashion-clip-recommender"
+version = "0.1.0"
+description = "Fashion Recommendation Engine using CLIP"
+authors = [
+    {name = "Antigravity",email = "antigravity@google.com"}
+]
+requires-python = ">=3.13,<3.15"
+dependencies = [
+    "torch (>=2.10.0,<3.0.0)",
+    "torchvision (>=0.25.0,<0.26.0)",
+    "transformers (>=5.2.0,<6.0.0)",
+    "datasets (>=4.5.0,<5.0.0)",
+    "wandb (>=0.25.0,<0.26.0)",
+    "scikit-learn (>=1.8.0,<2.0.0)",
+    "pillow (>=12.1.1,<13.0.0)",
+    "matplotlib (>=3.10.8,<4.0.0)",
+    "tqdm (>=4.67.3,<5.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.0.2,<10.0.0)",
+    "black (>=26.1.0,<27.0.0)",
+    "isort (>=7.0.0,<8.0.0)",
+    "flake8 (>=7.3.0,<8.0.0)"
+]
