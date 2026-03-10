@@ -66,8 +66,19 @@ def evaluate(args):
             img_emb = model.get_image_features(pixel_values=pixel_values)
             txt_emb = model.get_text_features(input_ids=input_ids, attention_mask=attention_mask)
             
-            image_embeddings.append(img_emb.cpu())
-            text_embeddings.append(txt_emb.cpu())
+            # Ensure we have tensors (some transformer versions return objects or require extraction)
+            if hasattr(img_emb, "image_embeds"):
+                img_emb = img_emb.image_embeds
+            elif hasattr(img_emb, "pooler_output"):
+                img_emb = img_emb.pooler_output
+                
+            if hasattr(txt_emb, "text_embeds"):
+                txt_emb = txt_emb.text_embeds
+            elif hasattr(txt_emb, "pooler_output"):
+                txt_emb = txt_emb.pooler_output
+            
+            image_embeddings.append(img_emb.detach().cpu())
+            text_embeddings.append(txt_emb.detach().cpu())
             
     image_embeddings = torch.cat(image_embeddings, dim=0)
     text_embeddings = torch.cat(text_embeddings, dim=0)

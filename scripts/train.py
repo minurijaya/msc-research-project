@@ -32,22 +32,29 @@ def main(args):
         import pandas as pd
         from PIL import Image
         if args.triplets_csv:
-            # Create dummy triplet data
+            # Create dummy catalog + triplet data (new ID-based format)
             os.makedirs("data/dummy_triplets", exist_ok=True)
-            img_a = "data/dummy_triplets/anc.jpg"
-            img_p = "data/dummy_triplets/pos.jpg"
-            img_n = "data/dummy_triplets/neg.jpg"
-            Image.new('RGB', (224, 224), color='red').save(img_a)
-            Image.new('RGB', (224, 224), color='red').save(img_p)
-            Image.new('RGB', (224, 224), color='blue').save(img_n)
-            
+            Image.new('RGB', (224, 224), color='red').save("data/dummy_triplets/anc.jpg")
+            Image.new('RGB', (224, 224), color='red').save("data/dummy_triplets/pos.jpg")
+            Image.new('RGB', (224, 224), color='blue').save("data/dummy_triplets/neg.jpg")
+
+            # Catalog: ID -> image path & caption
             pd.DataFrame({
-                "anchor_image": ["dummy_triplets/anc.jpg"]*10, "anchor_caption": ["Red shirt"]*10,
-                "positive_image": ["dummy_triplets/pos.jpg"]*10, "positive_caption": ["Redish shirt"]*10,
-                "negative_image": ["dummy_triplets/neg.jpg"]*10, "negative_caption": ["Blue shirt"]*10
+                "ID":      ["ANC", "POS", "NEG"],
+                "Image":   ["dummy_triplets/anc.jpg", "dummy_triplets/pos.jpg", "dummy_triplets/neg.jpg"],
+                "Caption": ["Red shirt", "Reddish shirt", "Blue shirt"],
+            }).to_csv("data/dummy_catalog.csv", index=False)
+
+            # Triplets: only IDs
+            pd.DataFrame({
+                "anchor_image":   ["ANC"] * 10,
+                "positive_image": ["POS"] * 10,
+                "negative_image": ["NEG"] * 10,
             }).to_csv("data/triplets.csv", index=False)
+
             args.image_dir = "data"
             args.triplets_csv = "data/triplets.csv"
+            args.catalog_csv  = "data/dummy_catalog.csv"
         else:
             os.makedirs("data/dummy_train", exist_ok=True)
             img_path = "data/dummy_train/train.jpg"
@@ -60,6 +67,7 @@ def main(args):
         print(f"Using Explicit Triplet Dataset from {args.triplets_csv}")
         dataset = TripletFashionDataset(
             image_root_dir=args.image_dir,
+            data_catalog_path=args.catalog_csv,
             metadata_path=args.triplets_csv,
             tokenizer=tokenizer,
             transform=train_transform
@@ -117,20 +125,20 @@ def main(args):
     
     if args.verify_mode:
         import shutil
-        if args.triplets_csv:
+        if os.path.exists("data/dummy_triplets"):
             shutil.rmtree("data/dummy_triplets")
-            os.remove("data/triplets.csv")
-        else:
-            shutil.rmtree("data/dummy_train")
-            os.remove("data/train.csv")
-        try: os.rmdir("data") 
+        for f in ["data/triplets.csv", "data/dummy_catalog.csv", "data/train.csv"]:
+            if os.path.exists(f):
+                os.remove(f)
+        try: os.rmdir("data")
         except: pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_dir", type=str, default="data/images")
     parser.add_argument("--train_csv", type=str, default="data/train.csv")
-    parser.add_argument("--triplets_csv", type=str, default=None, help="Path to explicit triplets CSV (anchor, positive, negative)")
+    parser.add_argument("--triplets_csv", type=str, default=None, help="Path to explicit triplets CSV (anchor_image, positive_image, negative_image IDs)")
+    parser.add_argument("--catalog_csv", type=str, default="data/Cleaned/dataset.csv", help="Path to data catalog CSV (ID, Image, Caption)")
     parser.add_argument("--output_dir", type=str, default="checkpoints")
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=32)
