@@ -150,3 +150,11 @@ Thumbs.db
 /data/
 
 wandb/
+
+# Model checkpoints (large binary files — do not commit)
+checkpoints/
+*.pt
+*.pth
+*.safetensors
+
+figures/
