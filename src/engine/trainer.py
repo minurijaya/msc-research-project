@@ -30,9 +30,6 @@ class FashionTrainer:
         
         self.global_step = 0
 
-        if self.config.get("use_wandb", False):
-            wandb.watch(self.model, log="all", log_freq=100)
-
     def train_epoch(self, epoch_idx):
         self.model.train()
         total_loss = 0
@@ -151,6 +148,9 @@ class FashionTrainer:
             wandb.log_artifact(artifact)
 
     def train(self, num_epochs):
+        if self.config.get("use_wandb", False):
+            wandb.watch(self.model, log="all", log_freq=100)
+
         for epoch in range(num_epochs):
             train_loss = self.train_epoch(epoch)
             print(f"Epoch {epoch} Loss: {train_loss:.4f}")
