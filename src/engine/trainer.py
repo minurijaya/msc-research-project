@@ -29,7 +29,10 @@ class FashionTrainer:
         self.config = config
         
         self.global_step = 0
-        
+
+        if self.config.get("use_wandb", False):
+            wandb.watch(self.model, log="all", log_freq=100)
+
     def train_epoch(self, epoch_idx):
         self.model.train()
         total_loss = 0
@@ -130,13 +133,22 @@ class FashionTrainer:
         # So we skip val loss in this loop and rely on external R@K eval script.
         return {}
 
-    def save_checkpoint(self, path):
+    def save_checkpoint(self, path, epoch=None):
         # Save model wrapper
         if hasattr(self.model, "module"):
             self.model.module.save_pretrained(path)
         else:
             self.model.save_pretrained(path)
         print(f"Saved model to {path}")
+
+        if self.config.get("use_wandb", False) and epoch is not None:
+            artifact = wandb.Artifact(
+                name="fashion-clip-checkpoint",
+                type="model",
+                metadata={"epoch": epoch}
+            )
+            artifact.add_dir(path)
+            wandb.log_artifact(artifact)
 
     def train(self, num_epochs):
         for epoch in range(num_epochs):
@@ -146,4 +158,4 @@ class FashionTrainer:
             # Checkpoint (every epoch for now)
             save_path = os.path.join(self.config["output_dir"], f"checkpoint-epoch-{epoch}")
             os.makedirs(save_path, exist_ok=True)
-            self.save_checkpoint(save_path)
+            self.save_checkpoint(save_path, epoch=epoch)
