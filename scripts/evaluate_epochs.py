@@ -1,24 +1,23 @@
 """
 Post-hoc per-epoch evaluation for overfitting analysis.
 
-Sweeps every checkpoint-epoch-* directory, evaluates Triplet Accuracy,
-Recall@K and MRR on the triplet set, then logs the results to WandB
-at the matching epoch step.
+Sweeps every checkpoint-epoch-* directory and evaluates Triplet Accuracy,
+Recall@K and MRR on both the TRAINING triplet set and a held-out TEST set.
+Logging both curves to WandB makes overfitting immediately visible:
+  - train/* metrics keep rising → model still learning on training data
+  - test/*  metrics plateau or fall → generalisation has peaked
 
-Optionally resumes the original training run (--wandb_run_id) so that
-eval curves appear in the same chart panel as the training loss.
-
-Usage (mirrors the training command):
+Usage:
     python scripts/evaluate_epochs.py \
         --image_dir /content/drive/MyDrive/FashionCLIP/ \
         --catalog_csv /content/drive/MyDrive/FashionCLIP/data/Cleaned/dataset.csv \
         --triplets_csv /content/drive/MyDrive/FashionCLIP/data/Cleaned/train.csv \
+        --test_csv     /content/drive/MyDrive/FashionCLIP/data/Cleaned/test.csv \
         --output_dir checkpoints \
         --batch_size 64
 
-To log into the SAME WandB run as training, add:
-        --wandb_run_id <run_id_from_training>
-(find it on the WandB run page URL: .../runs/<run_id>)
+To merge eval curves into the original training run:
+        --wandb_run_id <run_id>   (from the WandB run page URL)
 """
 
 import sys, os, glob, argparse, json
@@ -182,52 +181,58 @@ def triplet_metrics(embeddings: torch.Tensor,
 # Plotting (local chart as backup / supplement to WandB)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def plot_curves(records: list, out_path: str):
+def plot_curves(train_records: list, test_records: list, out_path: str):
     """
-    records: list of dicts with keys 'epoch', 'train_loss' (optional),
-             'Triplet Accuracy', 'R@1', 'R@5', 'R@10', 'MRR'
+    Plot train vs test curves for each metric on the same axes.
+    If test_records is empty, only train curves are drawn.
+    A vertical dashed line marks the test-best epoch (overfitting point).
     """
-    epochs = [r["epoch"] for r in records]
-    metrics = ["Triplet Accuracy", "R@1", "R@5", "R@10", "MRR"]
-    has_loss = any("train_loss" in r for r in records)
+    epochs       = [r["epoch"] for r in train_records]
+    metric_keys  = ["Triplet Accuracy", "R@1", "R@5", "R@10", "MRR"]
+    has_test     = len(test_records) > 0
+    test_by_ep   = {r["epoch"]: r for r in test_records}
 
-    n_panels = len(metrics) + (1 if has_loss else 0)
-    fig, axes = plt.subplots(1, n_panels, figsize=(4.5 * n_panels, 4.5))
-    if n_panels == 1:
-        axes = [axes]
+    fig, axes = plt.subplots(1, len(metric_keys), figsize=(4.8 * len(metric_keys), 4.8))
 
-    panel = 0
-    if has_loss:
-        loss_vals = [r.get("train_loss", float("nan")) for r in records]
-        axes[panel].plot(epochs, loss_vals, "o-", color="#E74C3C", linewidth=1.8)
-        axes[panel].set_title("Training Loss", fontsize=11)
-        axes[panel].set_xlabel("Epoch")
-        axes[panel].set_ylabel("Loss")
-        axes[panel].grid(True, alpha=0.3)
-        panel += 1
+    colours = ["#2980B9", "#27AE60", "#E67E22", "#8E44AD", "#C0392B"]
 
-    colours = ["#3498DB", "#2ECC71", "#F39C12", "#9B59B6", "#E67E22"]
-    for i, metric in enumerate(metrics):
-        vals = [r.get(metric, float("nan")) for r in records]
-        axes[panel].plot(epochs, vals, "o-", color=colours[i], linewidth=1.8, label=metric)
-        axes[panel].set_title(metric, fontsize=11)
-        axes[panel].set_xlabel("Epoch")
-        axes[panel].set_ylabel("Score")
-        axes[panel].set_ylim(0, 1.05)
-        axes[panel].grid(True, alpha=0.3)
+    for i, metric in enumerate(metric_keys):
+        ax = axes[i]
+        c  = colours[i]
 
-        # Mark peak
-        finite = [(e, v) for e, v in zip(epochs, vals) if not np.isnan(v)]
-        if finite:
-            best_e, best_v = max(finite, key=lambda x: x[1])
-            axes[panel].axvline(best_e, color=colours[i], linestyle="--", alpha=0.5)
-            axes[panel].annotate(f"peak\ne={best_e}\n{best_v:.3f}",
-                                  xy=(best_e, best_v),
-                                  xytext=(best_e + 0.5, best_v - 0.08),
-                                  fontsize=7, color=colours[i])
-        panel += 1
+        train_vals = [r.get(metric, float("nan")) for r in train_records]
+        ax.plot(epochs, train_vals, "o-", color=c, linewidth=2,
+                label="Train", alpha=0.9)
 
-    fig.suptitle("FashionCLIP – Training & Evaluation Curves", fontsize=13, fontweight="bold")
+        if has_test:
+            test_epochs = sorted(test_by_ep.keys())
+            test_vals   = [test_by_ep[e].get(metric, float("nan"))
+                           for e in test_epochs]
+            ax.plot(test_epochs, test_vals, "s--", color=c, linewidth=2,
+                    alpha=0.55, label="Test")
+
+            # Mark test-best (overfitting onset)
+            finite = [(e, v) for e, v in zip(test_epochs, test_vals)
+                      if not np.isnan(v)]
+            if finite:
+                best_e, best_v = max(finite, key=lambda x: x[1])
+                ax.axvline(best_e, color=c, linestyle=":", linewidth=1.4, alpha=0.7)
+                ax.annotate(f"best\ne={best_e}\n{best_v:.3f}",
+                            xy=(best_e, best_v),
+                            xytext=(best_e + 0.4, best_v - 0.10),
+                            fontsize=7, color=c,
+                            arrowprops=dict(arrowstyle="->", color=c, lw=0.8))
+
+        ax.set_title(metric, fontsize=11, fontweight="bold")
+        ax.set_xlabel("Epoch", fontsize=9)
+        ax.set_ylabel("Score", fontsize=9)
+        ax.set_ylim(0, 1.05)
+        ax.grid(True, alpha=0.25)
+        if has_test:
+            ax.legend(fontsize=8)
+
+    fig.suptitle("FashionCLIP – Train vs Test Evaluation Curves",
+                 fontsize=13, fontweight="bold")
     plt.tight_layout()
     plt.savefig(out_path, dpi=180, bbox_inches="tight")
     plt.close()
@@ -267,16 +272,24 @@ def main(args):
     id_to_idx = {str(row[id_col]): i for i, row in raw_df.iterrows()}
 
     # ── Triplets ──────────────────────────────────────────────────────────────
-    triplets_df = pd.read_csv(args.triplets_csv)
-    rename = {}
-    for col in ["anchor_image", "positive_image", "negative_image"]:
-        if col not in triplets_df.columns and f"{col}_id" in triplets_df.columns:
-            rename[f"{col}_id"] = col
-    if rename:
-        triplets_df = triplets_df.rename(columns=rename)
-    for col in ["anchor_image", "positive_image", "negative_image"]:
-        triplets_df[col] = triplets_df[col].astype(str)
-    print(f"  {len(triplets_df)} triplets")
+    def load_triplets(path, label):
+        df = pd.read_csv(path)
+        rename = {}
+        for col in ["anchor_image", "positive_image", "negative_image"]:
+            if col not in df.columns and f"{col}_id" in df.columns:
+                rename[f"{col}_id"] = col
+        if rename:
+            df = df.rename(columns=rename)
+        for col in ["anchor_image", "positive_image", "negative_image"]:
+            df[col] = df[col].astype(str)
+        print(f"  {label}: {len(df)} triplets")
+        return df
+
+    print("Loading triplets...")
+    triplets_df = load_triplets(args.triplets_csv, "train")
+    test_df     = load_triplets(args.test_csv, "test") if args.test_csv else None
+    if not args.test_csv:
+        print("  No --test_csv provided; only train triplets will be evaluated.")
 
     # ── WandB init ────────────────────────────────────────────────────────────
     if not args.dry_run:
@@ -294,7 +307,8 @@ def main(args):
                 name="eval-all-epochs",
                 config={
                     "catalog_size": len(catalog_ds),
-                    "num_triplets": len(triplets_df),
+                    "train_triplets": len(triplets_df),
+                    "test_triplets": len(test_df) if test_df is not None else 0,
                     "projection_dim": args.projection_dim,
                     "num_checkpoints": len(ckpt_dirs),
                 }
@@ -302,7 +316,7 @@ def main(args):
             print(f"New WandB run: {run.id}")
             print("  Tip: pass --wandb_run_id to merge with your training run.")
 
-    # ── Pre-compute zero-shot baseline once ───────────────────────────────────
+    # ── Pre-compute zero-shot baseline once (on test set if available) ─────────
     print("\nComputing zero-shot CLIP baseline (once)...")
     zs_clip = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
     zs_clip.eval()
@@ -312,10 +326,12 @@ def main(args):
             pv = batch["pixel_values"].to(device)
             e  = F.normalize(zs_clip.get_image_features(pixel_values=pv), dim=-1)
             zs_embs.append(e.cpu())
-    zs_embeddings = torch.cat(zs_embs, dim=0)
-    zs_metrics = triplet_metrics(zs_embeddings, triplets_df, id_to_idx)
-    print("  Zero-shot:", {k: f"{v:.4f}" for k, v in zs_metrics.items()})
-    del zs_clip  # free VRAM
+    zs_embeddings  = torch.cat(zs_embs, dim=0)
+    ref_df         = test_df if test_df is not None else triplets_df
+    zs_metrics     = triplet_metrics(zs_embeddings, ref_df, id_to_idx)
+    print("  Zero-shot (on {}):".format("test" if test_df is not None else "train"),
+          {k: f"{v:.4f}" for k, v in zs_metrics.items()})
+    del zs_clip
 
     # ── Initialise model (reuse shell across checkpoints) ─────────────────────
     model = FashionCLIPModel(
@@ -324,7 +340,7 @@ def main(args):
     ).to(device)
 
     # ── Sweep checkpoints ─────────────────────────────────────────────────────
-    records = []
+    train_records, test_records = [], []
     print(f"\nEvaluating {len(ckpt_dirs)} checkpoints...")
 
     for ckpt_dir in ckpt_dirs:
@@ -332,71 +348,96 @@ def main(args):
         print(f"\n  Epoch {epoch:>3}  ({ckpt_dir})")
 
         model = load_fashionclip_weights(model, ckpt_dir, device)
-
         with torch.no_grad():
             fc_embeddings = encode_catalog(model, catalog_loader, device)
 
-        metrics = triplet_metrics(fc_embeddings, triplets_df, id_to_idx)
-        metrics["epoch"] = epoch
-        records.append(metrics)
+        # Train metrics
+        tr_m = triplet_metrics(fc_embeddings, triplets_df, id_to_idx)
+        tr_m["epoch"] = epoch
+        train_records.append(tr_m)
 
-        summary = "  " + "  ".join(f"{k}: {v:.4f}" for k, v in metrics.items() if k != "epoch")
-        print(summary)
+        # Test metrics (if test set provided)
+        te_m = {}
+        if test_df is not None:
+            te_m = triplet_metrics(fc_embeddings, test_df, id_to_idx)
+            te_m["epoch"] = epoch
+            test_records.append(te_m)
+
+        # Print
+        tr_str = "  train: " + "  ".join(f"{k}={v:.4f}" for k, v in tr_m.items() if k != "epoch")
+        print(tr_str)
+        if te_m:
+            te_str = "  test:  " + "  ".join(f"{k}={v:.4f}" for k, v in te_m.items() if k != "epoch")
+            print(te_str)
 
         if not args.dry_run:
-            log_dict = {f"eval/{k}": v for k, v in metrics.items() if k != "epoch"}
-            wandb.log(log_dict, step=epoch)
+            log = {f"train/{k}": v for k, v in tr_m.items() if k != "epoch"}
+            if te_m:
+                log.update({f"test/{k}": v for k, v in te_m.items() if k != "epoch"})
+            wandb.log(log, step=epoch)
 
-    # ── Log zero-shot as horizontal reference lines ───────────────────────────
+    # ── Log zero-shot baseline as reference ───────────────────────────────────
     if not args.dry_run:
-        wandb.log({f"eval/zeroshot_{k}": v for k, v in zs_metrics.items()}, step=0)
+        split = "test" if test_df is not None else "train"
+        wandb.log({f"zeroshot/{split}/{k}": v for k, v in zs_metrics.items()}, step=0)
 
     # ── Summary table in WandB ────────────────────────────────────────────────
     if not args.dry_run:
         metric_keys = ["Triplet Accuracy", "R@1", "R@5", "R@10", "MRR"]
-        best_records = {}
+        src_records = test_records if test_records else train_records
+        src_label   = "Test" if test_records else "Train"
+
+        best = {}
         for m in metric_keys:
-            vals = [(r["epoch"], r.get(m, float("nan"))) for r in records]
+            vals = [(r["epoch"], r.get(m, float("nan"))) for r in src_records]
             vals = [(e, v) for e, v in vals if not np.isnan(v)]
             if vals:
-                best_e, best_v = max(vals, key=lambda x: x[1])
-                best_records[m] = (best_e, best_v)
+                best[m] = max(vals, key=lambda x: x[1])
 
-        table = wandb.Table(columns=["Metric", "Zero-Shot", "Best Fine-Tuned", "Best Epoch", "Delta"])
+        table = wandb.Table(columns=["Metric", "Zero-Shot",
+                                     f"Best FashionCLIP ({src_label})",
+                                     "Best Epoch", "Δ vs Zero-Shot"])
         for m in metric_keys:
             zs_v = zs_metrics.get(m, float("nan"))
-            if m in best_records:
-                best_e, best_v = best_records[m]
-                delta = best_v - zs_v
-                table.add_data(m, round(zs_v, 4), round(best_v, 4), best_e, round(delta, 4))
+            if m in best:
+                best_e, best_v = best[m]
+                table.add_data(m, round(zs_v, 4), round(best_v, 4),
+                               best_e, round(best_v - zs_v, 4))
         wandb.log({"best_eval_summary": table})
 
     # ── Local matplotlib plot ─────────────────────────────────────────────────
     plot_path = os.path.join(args.output_dir, "eval_curves.png")
-    plot_curves(records, plot_path)
+    plot_curves(train_records, test_records, plot_path)
 
     if not args.dry_run:
         wandb.log({"eval_curves": wandb.Image(plot_path)})
         wandb.finish()
 
     # ── Print overfitting summary ─────────────────────────────────────────────
-    print("\n" + "═" * 60)
-    print("OVERFITTING ANALYSIS SUMMARY")
-    print("═" * 60)
     metric_keys = ["Triplet Accuracy", "R@1", "R@5", "R@10", "MRR"]
-    for m in metric_keys:
-        vals = [(r["epoch"], r.get(m, float("nan"))) for r in records]
-        vals = [(e, v) for e, v in vals if not np.isnan(v)]
-        if not vals:
-            continue
-        best_e, best_v = max(vals, key=lambda x: x[1])
-        last_e, last_v = vals[-1]
-        drop = last_v - best_v
-        status = "✓ stable" if abs(drop) < 0.01 else ("⚠ degraded" if drop < 0 else "↑ improving")
-        print(f"  {m:<22}  peak={best_v:.4f} @ epoch {best_e:>2}  "
-              f"last={last_v:.4f}  Δ={drop:+.4f}  {status}")
-    print("═" * 60)
-    print(f"\nFull curves saved to: {plot_path}")
+
+    def summarise(records, label):
+        print(f"\n{'═'*65}")
+        print(f"  {label.upper()} — OVERFITTING ANALYSIS")
+        print(f"{'═'*65}")
+        for m in metric_keys:
+            vals = [(r["epoch"], r.get(m, float("nan"))) for r in records]
+            vals = [(e, v) for e, v in vals if not np.isnan(v)]
+            if not vals:
+                continue
+            best_e, best_v = max(vals, key=lambda x: x[1])
+            last_e, last_v = vals[-1]
+            drop   = last_v - best_v
+            status = ("✓ stable"   if abs(drop) < 0.01
+                      else "⚠ degraded" if drop < 0
+                      else "↑ improving")
+            print(f"  {m:<22}  peak={best_v:.4f}@ep{best_e:<3}  "
+                  f"last={last_v:.4f}  Δ={drop:+.4f}  {status}")
+
+    summarise(train_records, "Train set")
+    if test_records:
+        summarise(test_records, "Test set")
+    print(f"\n  Full curves: {plot_path}")
 
 
 if __name__ == "__main__":
@@ -404,6 +445,9 @@ if __name__ == "__main__":
     parser.add_argument("--image_dir",      type=str, required=True)
     parser.add_argument("--catalog_csv",    type=str, required=True)
     parser.add_argument("--triplets_csv",   type=str, required=True)
+    parser.add_argument("--test_csv",       type=str, default=None,
+                        help="Held-out test triplets CSV for overfitting analysis "
+                             "(anchor_image, positive_image, negative_image)")
     parser.add_argument("--output_dir",     type=str, default="checkpoints",
                         help="Directory containing checkpoint-epoch-* folders")
     parser.add_argument("--projection_dim", type=int, default=256)
