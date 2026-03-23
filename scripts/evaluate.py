@@ -137,6 +137,7 @@ def build_zeroshot_embeddings(clip_model, catalog_dataset, batch_size, device):
     for batch in tqdm(loader, desc="  Zero-shot CLIP catalog embeddings"):
         pv = batch["pixel_values"].to(device)
         emb = clip_model.get_image_features(pixel_values=pv)
+        emb = emb.pooler_output if not isinstance(emb, torch.Tensor) else emb
         emb = F.normalize(emb, dim=-1)
         all_embs.append(emb.cpu())
     return torch.cat(all_embs, dim=0)      # (N, 512)

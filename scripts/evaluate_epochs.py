@@ -324,7 +324,9 @@ def main(args):
     with torch.no_grad():
         for batch in tqdm(catalog_loader, desc="  zero-shot embeddings"):
             pv = batch["pixel_values"].to(device)
-            e  = F.normalize(zs_clip.get_image_features(pixel_values=pv), dim=-1)
+            out = zs_clip.get_image_features(pixel_values=pv)
+            out = out.pooler_output if not isinstance(out, torch.Tensor) else out
+            e  = F.normalize(out, dim=-1)
             zs_embs.append(e.cpu())
     zs_embeddings  = torch.cat(zs_embs, dim=0)
     ref_df         = test_df if test_df is not None else triplets_df
