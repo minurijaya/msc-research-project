@@ -22,7 +22,7 @@ def main(args):
     print(f"Using device: {device}")
     
     # 1. Initialize Components
-    model_name = "openai/clip-vit-base-patch32"
+    model_name = args.clip_model
     tokenizer = CLIPTokenizer.from_pretrained(model_name)
     train_transform, _ = get_transforms(img_size=224)
     
@@ -146,6 +146,7 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument("--projection_dim", type=int, default=256)
     parser.add_argument("--margin", type=float, default=0.5)
+    parser.add_argument("--clip_model", type=str, default="patrickjohncyh/fashion-clip", help="HuggingFace model ID for the CLIP backbone")
     parser.add_argument("--freeze_clip", action="store_true")
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--dry-run", action="store_true")
