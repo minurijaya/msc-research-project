@@ -59,11 +59,6 @@ class FashionTrainer:
                 negative_emb = self.model(pixel_values=neg_img, input_ids=neg_ids, attention_mask=neg_mask)
                 
                 # Standard Triplet Loss
-                # We can reuse torch.nn.TripletMarginLoss directly or via self.loss_fn provided it supports (A, P, N)
-                # If self.loss_fn is BatchHardTripletLoss, it expects (embeddings, labels).
-                # We should probably instantiate a simple TripletMarginLoss for this mode or adapt.
-                # Let's assume for this step we calculate it manually or use functional
-                
                 loss = torch.nn.functional.triplet_margin_loss(
                     anchor_emb, positive_emb, negative_emb, 
                     margin=self.config.get("margin", 0.5)

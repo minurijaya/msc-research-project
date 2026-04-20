@@ -13,8 +13,6 @@ try:
     import faiss
 except ImportError:
     faiss = None
-    print("Faiss not found. Using simple PyTorch/Numpy fallback.")
-
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -70,7 +68,6 @@ def load_model(model_path, device, projection_dim=256):
     return model
 
 def build_index(args, model, device, tokenizer, transform):
-    print("Building Index from Catalog...")
     dataset = FashionCLIPDataset(
         image_root_dir=args.image_dir,
         metadata_path=args.catalog_csv,
@@ -139,7 +136,6 @@ def infer(args):
         
     D, I = index.search(query_emb, k=args.top_k)
     
-    print("\n--- Top Recommendations ---")
     for rank, idx in enumerate(I[0]):
         row = catalog_df.iloc[idx]
         score = D[0][rank]

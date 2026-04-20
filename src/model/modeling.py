@@ -47,15 +47,7 @@ class FashionCLIPModel(nn.Module):
         input_ids: torch.Tensor = None, 
         attention_mask: torch.Tensor = None
     ):
-        """
-        Forward pass handling optional modalities.
-        Args:
-           pixel_values: (B, C, H, W)
-           input_ids: (B, L)
-           attention_mask: (B, L)
-        Returns:
-           embeddings: (B, projection_dim)
-        """
+
         batch_size = 0
         device = self.clip.device
         
@@ -89,10 +81,8 @@ class FashionCLIPModel(nn.Module):
         # Concatenate along dim 1
         combined = torch.cat([image_embeds, text_embeds], dim=1)
         fused = self.fusion(combined)
-        
         # Projection
         projected = self.projection(fused)
-        
         # Normalize
         embeddings = projected / projected.norm(dim=-1, keepdim=True)
         

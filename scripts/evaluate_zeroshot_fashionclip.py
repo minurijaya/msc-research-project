@@ -1,19 +1,3 @@
-"""
-evaluate_zeroshot_fashionclip.py
-
-Zero-shot baseline using the patrickjohncyh/fashion-clip backbone.
-
-Encodes all catalogue products with image features only (no Fusion MLP,
-no fine-tuning) and evaluates full-catalogue triplet retrieval on the
-held-out test set.
-
-Usage:
-    python scripts/evaluate_zeroshot_fashionclip.py \
-        --image_dir   /content/drive/MyDrive/FashionCLIP/ \
-        --catalog_csv /content/drive/MyDrive/FashionCLIP/data/Cleaned/dataset.csv \
-        --test_csv    /content/drive/MyDrive/FashionCLIP/data/Cleaned/test.csv \
-        --dry-run
-"""
 
 import sys
 import os
@@ -34,7 +18,7 @@ from src.data.transforms import get_transforms
 import wandb
 
 
-# ── Dataset ───────────────────────────────────────────────────────────────────
+# Dataset 
 
 class CatalogDataset(Dataset):
     def __init__(self, catalog_path, image_root, transform):
@@ -58,7 +42,7 @@ class CatalogDataset(Dataset):
         return {"pixel_values": self.transform(image)}
 
 
-# ── Triplet metrics ───────────────────────────────────────────────────────────
+# Triplet metrics 
 
 def triplet_metrics(embeddings, triplets_df, id_to_idx, k_values=(1, 5, 10)):
     embeddings = embeddings.float()
@@ -107,7 +91,7 @@ def triplet_metrics(embeddings, triplets_df, id_to_idx, k_values=(1, 5, 10)):
     return result
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+#  Main 
 
 def main(args):
     MODEL_NAME = "patrickjohncyh/fashion-clip"
@@ -115,7 +99,7 @@ def main(args):
     print(f"Device: {device}")
     print(f"Model:  {MODEL_NAME}")
 
-    # ── Transforms & catalog ──────────────────────────────────────────────────
+    #  Transforms & catalog 
     _, val_transform = get_transforms(img_size=224)
 
     catalog_ds = CatalogDataset(args.catalog_csv, args.image_dir, val_transform)
@@ -127,7 +111,7 @@ def main(args):
     id_col = "ID" if "ID" in raw_df.columns else raw_df.columns[0]
     id_to_idx = {str(row[id_col]): i for i, row in raw_df.iterrows()}
 
-    # ── Test triplets ─────────────────────────────────────────────────────────
+    #  Test triplets 
     test_df = pd.read_csv(args.test_csv)
     for col in ["anchor_image", "positive_image", "negative_image"]:
         if col not in test_df.columns and f"{col}_id" in test_df.columns:
@@ -135,12 +119,12 @@ def main(args):
         test_df[col] = test_df[col].astype(str)
     print(f"Test triplets: {len(test_df)}")
 
-    # ── Load model ────────────────────────────────────────────────────────────
+    #  Load model 
     print(f"\nLoading {MODEL_NAME} ...")
     model = CLIPModel.from_pretrained(MODEL_NAME).to(device)
     model.eval()
 
-    # ── Encode catalogue (image features only) ────────────────────────────────
+    #  Encode catalogue (image features only) 
     all_embs = []
     with torch.no_grad():
         for batch in tqdm(catalog_loader, desc="Encoding catalogue"):
@@ -151,15 +135,15 @@ def main(args):
     embeddings = torch.cat(all_embs, dim=0)   # (N, 512)
     print(f"Embeddings shape: {embeddings.shape}")
 
-    # ── Evaluate ──────────────────────────────────────────────────────────────
-    print("\nEvaluating on test triplets...")
+    # Evaluating on test triplets
+    print("\nEvaluating on test triplets")
     metrics = triplet_metrics(embeddings, test_df, id_to_idx)
 
-    print("\n── Zero-Shot fashion-clip (image-only) ─────────────────────────")
+   
     for k, v in metrics.items():
         print(f"  {k:<22} {v:.4f}")
 
-    # ── WandB ─────────────────────────────────────────────────────────────────
+    # logging to WandB
     if not args.dry_run:
         wandb.init(
             project="fashion-clip-recommender",
@@ -173,7 +157,7 @@ def main(args):
         )
         wandb.log({f"zeroshot/{k}": v for k, v in metrics.items()})
         wandb.finish()
-        print("\nResults logged to WandB.")
+       
 
 
 if __name__ == "__main__":

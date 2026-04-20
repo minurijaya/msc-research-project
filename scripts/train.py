@@ -19,14 +19,13 @@ from src.data.triplet_dataset import TripletFashionDataset
 def main(args):
     # Config
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
     
-    # 1. Initialize Components
+    # Initialize Components
     model_name = args.clip_model
     tokenizer = CLIPTokenizer.from_pretrained(model_name)
     train_transform, _ = get_transforms(img_size=224)
     
-    # 2. Dataset
+    #Dataset
     # Use dummy data if verify mode
     if args.verify_mode:
         import pandas as pd
@@ -64,7 +63,6 @@ def main(args):
             args.train_csv = "data/train.csv"
         
     if args.triplets_csv:
-        print(f"Using Explicit Triplet Dataset from {args.triplets_csv}")
         dataset = TripletFashionDataset(
             image_root_dir=args.image_dir,
             data_catalog_path=args.catalog_csv,
@@ -73,7 +71,6 @@ def main(args):
             transform=train_transform
         )
     else:
-        print(f"Using Siamese Dataset from {args.train_csv}")
         dataset = FashionCLIPDataset(
             image_root_dir=args.image_dir,
             metadata_path=args.train_csv,
@@ -89,23 +86,23 @@ def main(args):
         num_workers=args.num_workers
     )
     
-    # 3. Model
+    #Model
     model = FashionCLIPModel(
         clip_model_name=model_name,
         projection_dim=args.projection_dim,
         freeze_clip=args.freeze_clip
     ).to(device)
     
-    # 4. Optimizer & Loss
+    # Optimizer & Loss
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     loss_fn = BatchHardTripletLoss(margin=args.margin)
     
-    # 5. Trainer
+    #Trainer
     trainer = FashionTrainer(
         model=model,
         train_loader=train_loader,
-        val_loader=None, # Todo
+        val_loader=None, 
         optimizer=optimizer,
         scheduler=scheduler,
         loss_fn=loss_fn,
@@ -116,7 +113,7 @@ def main(args):
         }
     )
     
-    # 6. Train
+    #Train
     if not args.dry_run:
         import wandb
         wandb.init(project="fashion-clip-recommender", name="triplet-loss-run")
