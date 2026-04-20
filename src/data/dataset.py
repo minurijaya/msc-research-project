@@ -6,12 +6,7 @@ import os
 from typing import List, Optional, Callable, Dict, Any
 
 class FashionCLIPDataset(Dataset):
-    """
-    Dataset for Fashion Recommendation using CLIP.
-    Expected data format:
-    - Image directory: Root folder containing images.
-    - Metadata: DataFrame or CSV with 'image_path' and 'caption' columns.
-    """
+    
     def __init__(
         self,
         image_root_dir: str,
@@ -23,17 +18,7 @@ class FashionCLIPDataset(Dataset):
         max_length: int = 77,
         return_pairs: bool = False,
     ):
-        """
-        Args:
-            image_root_dir (str): Path to the directory with images.
-            metadata_path (str): Path to CSV/Parquet file with metadata.
-            tokenizer: HuggingFace CLIPTokenizer.
-            transform (callable, optional): Optional transform to be applied on a sample.
-            image_column (str): Column name for image filenames/paths.
-            text_column (str): Column name for text descriptions.
-            max_length (int): Maximum sequence length for tokenization.
-            return_pairs (bool): If True, returns two augmented views of the same image/text for triplet loss.
-        """
+        
         self.image_root_dir = image_root_dir
         self.transform = transform
         self.tokenizer = tokenizer

@@ -1,10 +1,9 @@
-"""Check which IDs referenced in train.csv are missing from dataset.csv."""
 
 import csv
 from collections import defaultdict
 from pathlib import Path
 
-TRAIN = Path(__file__).parent / "train.csv"
+TRAIN = Path(__file__).parent / "test.csv"
 DATASET = Path(__file__).parent / "dataset.csv"
 
 # Load all known IDs from dataset.csv
@@ -28,7 +27,7 @@ with TRAIN.open() as f:
             if val not in known_ids:
                 missing[val].append((lineno, col))
 
-# ── Stats ────────────────────────────────────────────────────────────────────
+#  Stats 
 print(f"Dataset IDs   : {len(known_ids):>6}")
 print(f"Train rows    : {lineno - 1:>6}")
 print(f"Total refs    : {total_refs:>6}  ({len(columns)} cols × rows)")

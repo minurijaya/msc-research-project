@@ -1,8 +1,3 @@
-"""Fix anomalous IDs in train.csv.
-
-Expected format: XX-YYYYY where XX is zero-padded to 2 digits
-and YYYYY is zero-padded to 5 digits.
-"""
 
 import csv
 import re
@@ -16,7 +11,6 @@ ID_PATTERN = re.compile(r"^(\d+)-(\d+)$")
 
 
 def fix_id(value: str) -> tuple[str, bool]:
-    """Return (fixed_id, was_changed)."""
     m = ID_PATTERN.match(value)
     if not m:
         raise ValueError(f"Unrecognisable ID format: {repr(value)}")
@@ -48,8 +42,7 @@ def main() -> None:
         writer = csv.writer(f)
         writer.writerows(rows_out)
 
-    print(f"\nFixed {fixed_count} ID(s). Output written to: {OUTPUT}")
-
+  
 
 if __name__ == "__main__":
     main()

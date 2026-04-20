@@ -1,24 +1,3 @@
-"""
-Post-hoc per-epoch evaluation for overfitting analysis.
-
-Sweeps every checkpoint-epoch-* directory and evaluates Triplet Accuracy,
-Recall@K and MRR on both the TRAINING triplet set and a held-out TEST set.
-Logging both curves to WandB makes overfitting immediately visible:
-  - train/* metrics keep rising → model still learning on training data
-  - test/*  metrics plateau or fall → generalisation has peaked
-
-Usage:
-    python scripts/evaluate_epochs.py \
-        --image_dir /content/drive/MyDrive/FashionCLIP/ \
-        --catalog_csv /content/drive/MyDrive/FashionCLIP/data/Cleaned/dataset.csv \
-        --triplets_csv /content/drive/MyDrive/FashionCLIP/data/Cleaned/train.csv \
-        --test_csv     /content/drive/MyDrive/FashionCLIP/data/Cleaned/test.csv \
-        --output_dir checkpoints \
-        --batch_size 64
-
-To merge eval curves into the original training run:
-        --wandb_run_id <run_id>   (from the WandB run page URL)
-"""
 
 import sys, os, glob, argparse, json
 
@@ -41,9 +20,7 @@ from src.data.transforms import get_transforms
 import wandb
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Dataset
-# ─────────────────────────────────────────────────────────────────────────────
 
 class CatalogDataset(Dataset):
     def __init__(self, catalog_path, image_root, tokenizer, transform):
@@ -77,9 +54,7 @@ class CatalogDataset(Dataset):
         }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def sorted_checkpoints(output_dir):
     """Return checkpoint directories sorted by epoch number."""
@@ -91,11 +66,7 @@ def sorted_checkpoints(output_dir):
 
 def load_fashionclip_weights(model: FashionCLIPModel, ckpt_dir: str,
                               device: torch.device) -> FashionCLIPModel:
-    """
-    Load fusion.pt and projection.pt from ckpt_dir into an existing model.
-    Also tries to reload the CLIP backbone if saved there.
-    Returns the model in eval mode.
-    """
+    
     fusion_path = os.path.join(ckpt_dir, "fusion.pt")
     proj_path   = os.path.join(ckpt_dir, "projection.pt")
 
@@ -119,7 +90,9 @@ def load_fashionclip_weights(model: FashionCLIPModel, ckpt_dir: str,
 
 @torch.no_grad()
 def encode_catalog(model, loader, device):
-    """Encode all catalog items; returns (N, D) L2-normalised tensor."""
+    
+
+
     all_embs = []
     for batch in loader:
         pv  = batch["pixel_values"].to(device)
@@ -177,16 +150,10 @@ def triplet_metrics(embeddings: torch.Tensor,
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Plotting (local chart as backup / supplement to WandB)
-# ─────────────────────────────────────────────────────────────────────────────
+# Plotting  - local chart as backup / supplement to WandB)
 
 def plot_curves(train_records: list, test_records: list, out_path: str):
-    """
-    Plot train vs test curves for each metric on the same axes.
-    If test_records is empty, only train curves are drawn.
-    A vertical dashed line marks the test-best epoch (overfitting point).
-    """
+   
     epochs       = [r["epoch"] for r in train_records]
     metric_keys  = ["Triplet Accuracy", "R@1", "R@5", "R@10", "MRR"]
     has_test     = len(test_records) > 0
@@ -239,27 +206,25 @@ def plot_curves(train_records: list, test_records: list, out_path: str):
     print(f"  Plot saved: {out_path}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Main
-# ─────────────────────────────────────────────────────────────────────────────
 
 def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # ── Find checkpoints ──────────────────────────────────────────────────────
+    # Find checkpoints
     ckpt_dirs = sorted_checkpoints(args.output_dir)
     if not ckpt_dirs:
         raise FileNotFoundError(f"No checkpoints found in {args.output_dir}")
     print(f"Found {len(ckpt_dirs)} checkpoints: "
           f"epoch {ckpt_dirs[0].rsplit('-',1)[-1]} → {ckpt_dirs[-1].rsplit('-',1)[-1]}")
 
-    # ── Tokenizer & transforms ────────────────────────────────────────────────
+    # Tokenizer & transforms
     tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
     _, val_transform = get_transforms(img_size=224)
 
-    # ── Catalog ───────────────────────────────────────────────────────────────
-    print("Loading catalog...")
+    # Catalog
+    
     catalog_ds = CatalogDataset(
         args.catalog_csv, args.image_dir, tokenizer, val_transform)
     catalog_loader = DataLoader(
@@ -271,7 +236,7 @@ def main(args):
     id_col = "ID" if "ID" in raw_df.columns else raw_df.columns[0]
     id_to_idx = {str(row[id_col]): i for i, row in raw_df.iterrows()}
 
-    # ── Triplets ──────────────────────────────────────────────────────────────
+    # Triplets
     def load_triplets(path, label):
         df = pd.read_csv(path)
         rename = {}
@@ -289,9 +254,9 @@ def main(args):
     triplets_df = load_triplets(args.triplets_csv, "train")
     test_df     = load_triplets(args.test_csv, "test") if args.test_csv else None
     if not args.test_csv:
-        print("  No --test_csv provided; only train triplets will be evaluated.")
+        print("  No test_csv provided; only train triplets will be evaluated.")
 
-    # ── WandB init ────────────────────────────────────────────────────────────
+    # WandB init
     if not args.dry_run:
         if args.wandb_run_id:
             # Resume the original training run so eval metrics appear in the same charts
@@ -316,8 +281,7 @@ def main(args):
             print(f"New WandB run: {run.id}")
             print("  Tip: pass --wandb_run_id to merge with your training run.")
 
-    # ── Pre-compute zero-shot baseline once (on test set if available) ─────────
-    print("\nComputing zero-shot CLIP baseline (once)...")
+    # Pre-compute zero-shot baseline once (on test set if available)
     zs_clip = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
     zs_clip.eval()
     zs_embs = []
@@ -335,13 +299,13 @@ def main(args):
           {k: f"{v:.4f}" for k, v in zs_metrics.items()})
     del zs_clip
 
-    # ── Initialise model (reuse shell across checkpoints) ─────────────────────
+    # Initialise model (reuse shell across checkpoints)
     model = FashionCLIPModel(
         clip_model_name="openai/clip-vit-base-patch32",
         projection_dim=args.projection_dim
     ).to(device)
 
-    # ── Sweep checkpoints ─────────────────────────────────────────────────────
+    # Sweep checkpoints
     train_records, test_records = [], []
     print(f"\nEvaluating {len(ckpt_dirs)} checkpoints...")
 
@@ -378,12 +342,12 @@ def main(args):
                 log.update({f"test/{k}": v for k, v in te_m.items() if k != "epoch"})
             wandb.log(log, step=epoch)
 
-    # ── Log zero-shot baseline as reference ───────────────────────────────────
+    # Log zero-shot baseline as reference
     if not args.dry_run:
         split = "test" if test_df is not None else "train"
         wandb.log({f"zeroshot/{split}/{k}": v for k, v in zs_metrics.items()}, step=0)
 
-    # ── Summary table in WandB ────────────────────────────────────────────────
+    # Summary table in WandB
     if not args.dry_run:
         metric_keys = ["Triplet Accuracy", "R@1", "R@5", "R@10", "MRR"]
         src_records = test_records if test_records else train_records
@@ -407,7 +371,7 @@ def main(args):
                                best_e, round(best_v - zs_v, 4))
         wandb.log({"best_eval_summary": table})
 
-    # ── Local matplotlib plot ─────────────────────────────────────────────────
+    # Local matplotlib plot
     plot_path = os.path.join(args.output_dir, "eval_curves.png")
     plot_curves(train_records, test_records, plot_path)
 
@@ -415,7 +379,7 @@ def main(args):
         wandb.log({"eval_curves": wandb.Image(plot_path)})
         wandb.finish()
 
-    # ── Print overfitting summary ─────────────────────────────────────────────
+    # Print overfitting summary
     metric_keys = ["Triplet Accuracy", "R@1", "R@5", "R@10", "MRR"]
 
     def summarise(records, label):

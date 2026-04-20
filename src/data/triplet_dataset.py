@@ -6,13 +6,7 @@ import os
 from typing import List, Optional, Callable, Dict, Any
 
 class TripletFashionDataset(Dataset):
-    """
-    Dataset for Explicit Triplet Training.
-    Expects metadata format:
-    - anchor_image, anchor_caption
-    - positive_image, positive_caption
-    - negative_image, negative_caption
-    """
+   
     def __init__(
         self,
         image_root_dir: str,
@@ -22,14 +16,7 @@ class TripletFashionDataset(Dataset):
         transform: Optional[Callable] = None,
         max_length: int = 77,
     ):
-        """
-        Args:
-            image_root_dir (str): Path to root image directory.
-            data_catalog_path (str): Path to CSV containing image paths & captions.
-            metadata_path (str): Path to CSV containing triplets.
-            tokenizer: HuggingFace CLIPTokenizer.
-            transform: Image transforms.
-        """
+       
         self.image_root_dir = image_root_dir
         self.transform = transform
         self.tokenizer = tokenizer

@@ -2,15 +2,7 @@ import torch
 import numpy as np
 
 def compute_recall_at_k(anchor_embeddings: torch.Tensor, target_embeddings: torch.Tensor, k_values=[1, 5, 10]):
-    """
-    Computes Recall@K for retrieval.
     
-    Args:
-        anchor_embeddings: (N, D) embeddings (e.g., text)
-        target_embeddings: (M, D) embeddings (e.g., images)
-        
-    Assuming 1-to-1 correspondence where anchor[i] matches target[i].
-    """
     # Normalize embeddings
     anchor_embeddings = anchor_embeddings / anchor_embeddings.norm(dim=-1, keepdim=True)
     target_embeddings = target_embeddings / target_embeddings.norm(dim=-1, keepdim=True)
@@ -33,9 +25,7 @@ def compute_recall_at_k(anchor_embeddings: torch.Tensor, target_embeddings: torc
     return recalls
 
 def compute_mrr(anchor_embeddings: torch.Tensor, target_embeddings: torch.Tensor):
-    """
-    Computes Mean Reciprocal Rank.
-    """
+   
     anchor_embeddings = anchor_embeddings / anchor_embeddings.norm(dim=-1, keepdim=True)
     target_embeddings = target_embeddings / target_embeddings.norm(dim=-1, keepdim=True)
     

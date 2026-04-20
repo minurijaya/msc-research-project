@@ -9,13 +9,7 @@ class BatchHardTripletLoss(nn.Module):
         self.triplet_loss = nn.TripletMarginLoss(margin=margin, reduction="mean")
 
     def forward(self, embeddings, labels):
-        """
-        Args:
-            embeddings: (B, D)
-            labels: (B,)
-        Returns:
-            loss: scalar
-        """
+        
         # Create pairwise distance matrix
         dot_product = torch.matmul(embeddings, embeddings.t())
         square_norm = torch.diag(dot_product)
